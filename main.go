@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/danielpaulus/go-ios/ios/amfi"
 	"github.com/danielpaulus/go-ios/ios/mobileactivation"
 
 	"github.com/danielpaulus/go-ios/ios/afc"
@@ -122,6 +123,7 @@ Usage:
   ios zoomtouch (enable | disable | toggle | get) [--force] [options]
   ios diskspace [options]
   ios batterycheck [options]
+  ios devmode (enable | get) [--enable-post-restart] [options]
 
 Options:
   -v --verbose   Enable Debug Logging.
@@ -142,6 +144,7 @@ The commands work as following:
    ios info [options]                                                 Prints a dump of Lockdown getValues.
    ios image list [options]                                           List currently mounted developers images' signatures
    ios image mount [--path=<imagepath>] [options]                     Mount a image from <imagepath>
+   >                                                                  For iOS 17+ (personalized developer disk images) <imagepath> must point to the "Restore" directory inside the developer disk 
    ios image auto [--basedir=<where_dev_images_are_stored>] [options] Automatically download correct dev image from the internets and mount it.
    >                                                                  You can specify a dir where images should be cached.
    >                                                                  The default is the current dir.
@@ -220,6 +223,7 @@ The commands work as following:
    ios timeformat (24h | 12h | toggle | get) [--force] [options] Sets, or returns the state of the "time format". iOS 11+ only (Use --force to try on older versions).
    ios diskspace [options]											  Prints disk space info.
    ios batterycheck [options]                                         Prints battery info.
+   ios devmode (enable | get) [--enable-post-restart] [options]	  Enable developer mode on the device or check if it is enabled. Can also completely finalize developer mode setup after device is restarted.
 
   `, version)
 	arguments, err := docopt.ParseDoc(usage)
@@ -901,6 +905,24 @@ The commands work as following:
 		printBatteryDiagnostics(device)
 		return
 	}
+
+	b, _ = arguments.Bool("devmode")
+	if b {
+		enable, _ := arguments.Bool("enable")
+		get, _ := arguments.Bool("get")
+		enablePostRestart, _ := arguments.Bool("--enable-post-restart")
+		if enable {
+			err := amfi.EnableDeveloperMode(device, enablePostRestart)
+			exitIfError("Failed enabling developer mode", err)
+		}
+
+		if get {
+			devModeEnabled, _ := imagemounter.IsDevModeEnabled(device)
+			fmt.Printf("Developer mode enabled: %v\n", devModeEnabled)
+		}
+
+		return
+	}
 }
 
 func mobileGestaltCommand(device ios.DeviceEntry, arguments docopt.Opts) bool {
@@ -1120,7 +1142,7 @@ func outputPrettyStateList(types []instruments.ProfileType) {
 }
 
 func listMountedImages(device ios.DeviceEntry) {
-	conn, err := imagemounter.New(device)
+	conn, err := imagemounter.NewImageMounter(device)
 	exitIfError("failed connecting to image mounter", err)
 	signatures, err := conn.ListImages()
 	exitIfError("failed getting image list", err)
